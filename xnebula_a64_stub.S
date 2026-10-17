@@ -62,7 +62,7 @@ mov x8, #167
 svc #0
 bl .Lxn_a64_tracer_check
 mov x0, #0
-mov x1, #8192
+mov x1, #16384
 mov x2, #3
 mov x3, #0x22
 mov x4, #-1
@@ -70,7 +70,17 @@ mov x5, #0
 mov x8, #222
 svc #0
 tbnz x0, #63, .Lxn_a64_mon_fail
-add x1, x0, #8192
+mov x22, x0
+str x22, [sp, #288]
+ldr x9, [sp, #0]
+str x9, [x22]
+add x9, x20, #64
+str x9, [x22, #8]
+ldr x9, [x20, #24]
+str x9, [x22, #16]
+str xzr, [x22, #24]
+mov x1, #16384
+add x1, x22, x1
 MOV32 w0, 0x50f00
 mov x2, #0
 mov x3, #0
@@ -336,6 +346,10 @@ dsb ish
 isb
 b .Lxn_a64_range_loop
 .Lxn_a64_ranges_done:
+ldr x9, [sp, #288]
+add x9, x9, #24
+mov x10, #1
+stlr x10, [x9]
 ldr x9, [sp, #8]
 cbz x9, .Lxn_a64_done
 ldr x10, [sp, #0]
@@ -369,63 +383,117 @@ mov x0, #1
 mov x8, #94
 svc #0
 .Lxn_a64_tracer_check:
-sub sp, sp, #1056
+sub sp, sp, #2112
+str x30, [sp, #2096]
 mov x0, #-100
-adr x1, .Lxn_a64_path
+adr x1, .Lxn_a64_path_task
+mov x2, #0x4000
+mov x8, #56
+svc #0
+tbnz x0, #63, .Lxn_a64_status_fail
+str x0, [sp, #2048]
+.Lxn_a64_tc_read:
+ldr x0, [sp, #2048]
+mov x1, sp
+mov x2, #1024
+mov x8, #61
+svc #0
+tbnz x0, #63, .Lxn_a64_status_fail
+cbz x0, .Lxn_a64_tc_close
+str x0, [sp, #2080]
+str xzr, [sp, #2072]
+.Lxn_a64_tc_ent:
+ldr x9, [sp, #2072]
+ldr x10, [sp, #2080]
+cmp x9, x10
+b.hs .Lxn_a64_tc_read
+mov x11, sp
+add x11, x11, x9
+ldrh w12, [x11, #16]
+cbz w12, .Lxn_a64_status_fail
+add x9, x9, x12
+str x9, [sp, #2072]
+ldrb w13, [x11, #19]
+cmp w13, #48
+b.lo .Lxn_a64_tc_ent
+cmp w13, #57
+b.hi .Lxn_a64_tc_ent
+ldr x0, [sp, #2048]
+add x1, x11, #19
+mov x2, #0x4000
+mov x8, #56
+svc #0
+tbnz x0, #63, .Lxn_a64_tc_ent
+str x0, [sp, #2056]
+ldr x0, [sp, #2056]
+adr x1, .Lxn_a64_name_status
 mov x2, #0
 mov x3, #0
 mov x8, #56
 svc #0
-tbnz x0, #63, .Lxn_a64_status_fail
-str x0, [sp, #1024]
-mov x1, sp
+tbnz x0, #63, .Lxn_a64_tc_close_tid
+str x0, [sp, #2064]
+add x1, sp, #1024
 mov x2, #1023
 mov x8, #63
 svc #0
-str x0, [sp, #1032]
-ldr x0, [sp, #1024]
+str x0, [sp, #2088]
+ldr x0, [sp, #2064]
 mov x8, #57
 svc #0
-ldr x2, [sp, #1032]
+ldr x2, [sp, #2088]
 cmp x2, #0
-b.le .Lxn_a64_status_fail
-mov x3, sp
-add x2, x3, x2
+b.le .Lxn_a64_tc_close_tid
+add x1, sp, #1024
+add x2, x1, x2
+bl .Lxn_a64_scan_tracer
+.Lxn_a64_tc_close_tid:
+ldr x0, [sp, #2056]
+mov x8, #57
+svc #0
+b .Lxn_a64_tc_ent
+.Lxn_a64_tc_close:
+ldr x0, [sp, #2048]
+mov x8, #57
+svc #0
+ldr x30, [sp, #2096]
+add sp, sp, #2112
+ret
+.Lxn_a64_scan_tracer:
 adr x5, .Lxn_a64_pat
-.Lxn_a64_chk_scan:
-add x9, x3, #10
+.Lxn_a64_sc_scan:
+add x9, x1, #10
 cmp x9, x2
 b.hi .Lxn_a64_status_fail
 mov x10, #0
-.Lxn_a64_chk_cmp:
+.Lxn_a64_sc_cmp:
 cmp x10, #10
-b.hs .Lxn_a64_chk_found
-ldrb w11, [x3, x10]
+b.hs .Lxn_a64_sc_found
+ldrb w11, [x1, x10]
 ldrb w12, [x5, x10]
 cmp w11, w12
-b.ne .Lxn_a64_chk_next
+b.ne .Lxn_a64_sc_next
 add x10, x10, #1
-b .Lxn_a64_chk_cmp
-.Lxn_a64_chk_next:
-add x3, x3, #1
-b .Lxn_a64_chk_scan
-.Lxn_a64_chk_found:
-add x3, x3, #10
-.Lxn_a64_chk_ws:
-cmp x3, x2
+b .Lxn_a64_sc_cmp
+.Lxn_a64_sc_next:
+add x1, x1, #1
+b .Lxn_a64_sc_scan
+.Lxn_a64_sc_found:
+add x1, x1, #10
+.Lxn_a64_sc_ws:
+cmp x1, x2
 b.hs .Lxn_a64_status_fail
-ldrb w11, [x3]
+ldrb w11, [x1]
 cmp w11, #32
-b.eq .Lxn_a64_chk_ws_next
+b.eq .Lxn_a64_sc_ws_next
 cmp w11, #9
-b.eq .Lxn_a64_chk_ws_next
+b.eq .Lxn_a64_sc_ws_next
 cmp w11, #48
 b.ne .Lxn_a64_dbg_detected
-add sp, sp, #1056
 ret
-.Lxn_a64_chk_ws_next:
-add x3, x3, #1
-b .Lxn_a64_chk_ws
+.Lxn_a64_sc_ws_next:
+add x1, x1, #1
+b .Lxn_a64_sc_ws
 .Lxn_a64_status_fail:
 adr x1, .Lxn_a64_msg_status
 movz x2, #(.Lxn_a64_msg_status_end - .Lxn_a64_msg_status)
@@ -441,15 +509,52 @@ b .Lxn_a64_die
 .Lxn_a64_monitor:
 sub sp, sp, #16
 str xzr, [sp, #0]
-MOV32 x9, 100000000
+MOV32 x9, 500000000
 str x9, [sp, #8]
 .Lxn_a64_mon_loop:
 bl .Lxn_a64_tracer_check
+add x9, x22, #24
+ldar x9, [x9]
+cbz x9, .Lxn_a64_mon_sleep
+bl .Lxn_a64_integrity_scan
+.Lxn_a64_mon_sleep:
 mov x0, sp
 mov x1, #0
 mov x8, #101
 svc #0
 b .Lxn_a64_mon_loop
+.Lxn_a64_integrity_scan:
+ldr x13, [x22, #8]
+ldr x14, [x22, #16]
+mov x15, #0
+.Lxn_a64_is_loop:
+cmp x15, x14
+b.hs .Lxn_a64_is_done
+add x9, x15, x15, lsl #1
+add x10, x13, x9, lsl #3
+ldr x11, [x10]
+ldr x12, [x22]
+add x11, x11, x12
+ldr x12, [x10, #8]
+lsl x12, x12, #8
+lsr x12, x12, #8
+MOV64 x16, 0xcbf29ce484222325
+MOV64 x17, 0x100000001b3
+.Lxn_a64_is_hash:
+cbz x12, .Lxn_a64_is_cmp
+ldrb w9, [x11], #1
+eor x16, x16, x9
+mul x16, x16, x17
+sub x12, x12, #1
+b .Lxn_a64_is_hash
+.Lxn_a64_is_cmp:
+ldr x9, [x10, #16]
+cmp x16, x9
+b.ne .Lxn_a64_err_integrity
+add x15, x15, #1
+b .Lxn_a64_is_loop
+.Lxn_a64_is_done:
+ret
 .Lxn_a64_msg_bad:
 .ascii "XNebula: bad configuration\n"
 .Lxn_a64_msg_bad_end:
@@ -468,8 +573,10 @@ b .Lxn_a64_mon_loop
 .Lxn_a64_msg_mon:
 .ascii "XNebula: monitor unavailable\n"
 .Lxn_a64_msg_mon_end:
-.Lxn_a64_path:
-.asciz "/proc/self/status"
+.Lxn_a64_path_task:
+.asciz "/proc/self/task"
+.Lxn_a64_name_status:
+.asciz "status"
 .Lxn_a64_pat:
 .ascii "TracerPid:"
 .balign 16
